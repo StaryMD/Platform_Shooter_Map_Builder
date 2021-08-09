@@ -1,10 +1,7 @@
-#define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
 #include <SFML/Graphics.hpp>
 #include <iostream>
 #include <fstream>
 #include <vector>
-#include <algorithm>
-#include <experimental/filesystem>
 
 #include "Map.hpp"
 #include "my_utils.hpp"
@@ -27,7 +24,12 @@ int main() {
 		float scale = 1.f;
 		bool LMB_was_pressed = false;
 
+		sf::Texture texture = get_texture(tilenames);
+		sf::Sprite sprite;
+		sprite.setTexture(texture);
+		
 		sf::RenderWindow window(sf::VideoMode::getDesktopMode(), "Platform Shooter Map Builder", sf::Style::Fullscreen);
+		
 		sf::Event event;
 		std::chrono::system_clock::time_point last_frame_start = std::chrono::system_clock::now();
 		while (window.isOpen()) {
@@ -59,18 +61,17 @@ int main() {
 			// INPUT HANDLING
 
 			if (sf::Keyboard::isKeyPressed(sf::Keyboard::Left) || sf::Keyboard::isKeyPressed(sf::Keyboard::A)) {
-				offset.x -= step * elapsed_time;
-			}
-			if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right) || sf::Keyboard::isKeyPressed(sf::Keyboard::D)) {
 				offset.x += step * elapsed_time;
 			}
-			if (sf::Keyboard::isKeyPressed(sf::Keyboard::Up) || sf::Keyboard::isKeyPressed(sf::Keyboard::W)) {
-				offset.y -= step * elapsed_time;
+			if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right) || sf::Keyboard::isKeyPressed(sf::Keyboard::D)) {
+				offset.x -= step * elapsed_time;
 			}
-			if (sf::Keyboard::isKeyPressed(sf::Keyboard::Down) || sf::Keyboard::isKeyPressed(sf::Keyboard::S)) {
+			if (sf::Keyboard::isKeyPressed(sf::Keyboard::Up) || sf::Keyboard::isKeyPressed(sf::Keyboard::W)) {
 				offset.y += step * elapsed_time;
 			}
-
+			if (sf::Keyboard::isKeyPressed(sf::Keyboard::Down) || sf::Keyboard::isKeyPressed(sf::Keyboard::S)) {
+				offset.y -= step * elapsed_time;
+			}
 			if (sf::Mouse::isButtonPressed(sf::Mouse::Left)) {
 				if (LMB_was_pressed) {
 					sf::Vector2i tmp = sf::Mouse::getPosition() - last_mouse_pos;
@@ -87,11 +88,26 @@ int main() {
 
 			window.clear(sf::Color(151, 151, 151));
 
-			for (int i = 0; i <= map.size_x; i++)
-				line(window, sf::Vector2f(i * tile_size, 0.f) * scale + offset, sf::Vector2f(i * tile_size, map.size_y * tile_size) * scale + offset);
+			sprite.setScale({ scale, scale });
+			int *ptr = map.grid;
+
+			for (int i = 0; i < map.size.y; i++) {
+				for (int j = 0; j < map.size.x; j++) {
+					sf::Vector2f pos = { j * tile_size, i * tile_size };
+					int value = *ptr++;
+
+					sprite.setPosition(pos * scale + offset);
+					sprite.setTextureRect(sf::IntRect(value * 16, 0, 16, 16));
+
+					window.draw(sprite);
+				}
+			}
+
+			for (int i = 0; i <= map.size.x; i++)
+				line(window, sf::Vector2f(i * tile_size, 0.f) * scale + offset, sf::Vector2f(i * tile_size, map.size.y * tile_size) * scale + offset);
 			
-			for (int i = 0; i <= map.size_y; i++)
-				line(window, sf::Vector2f(0.f, i * tile_size) * scale + offset, sf::Vector2f(map.size_x * tile_size, i * tile_size) * scale + offset);
+			for (int i = 0; i <= map.size.y; i++)
+				line(window, sf::Vector2f(0.f, i * tile_size) * scale + offset, sf::Vector2f(map.size.x * tile_size, i * tile_size) * scale + offset);
 
 			window.display();
 		}
