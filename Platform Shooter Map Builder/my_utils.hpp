@@ -31,7 +31,7 @@ void draw_ontop(sf::Image &image, std::string &path, int x, int y) {
 			image.setPixel(j + x, i + y, temp.getPixel(j, i));
 }
 
-sf::Texture get_textures(std::vector<std::string> &tilenames) {
+sf::Texture get_tile_textures(std::vector<std::string> &tilenames) {
 	sf::Image image;
 	int tile_size;
 	{
@@ -81,6 +81,10 @@ sf::Texture get_button_textures() {
 	return texture;
 }
 
-sf::IntRect get_button_rect(sf::RenderWindow &window, int button_size) {
+sf::IntRect get_menu_button_rect(sf::RenderWindow &window, int button_size) {
 	return sf::IntRect(window.getSize().x - button_size - 10, 10, button_size, button_size);
+}
+
+sf::IntRect get_close_button_rect(sf::RenderWindow &window, int button_size) {
+	return sf::IntRect(window.getSize().x * 7 / 10 + 10, 10, button_size, button_size);
 }

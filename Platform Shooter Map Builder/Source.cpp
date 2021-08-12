@@ -15,36 +15,48 @@ int main() {
 	else {
 		std::cout << "Successfully loaded " << tilenames.size() << " textures\n";
 
+		sf::RenderWindow window(sf::VideoMode::getDesktopMode(), "Platform Shooter Map Builder", sf::Style::Fullscreen);
+
 		Map map(60, 40);
 		sf::Vector2f offset = { 0.f, 0.f };
 		sf::Vector2i last_mouse_pos = sf::Mouse::getPosition();
 		float scale = 1.f;
 		bool LMB_was_pressed = false;
+		bool RMB_was_pressed = false;
 
 		// CONSTANTS
 		const int tile_size = 16;
 		const float step = 150.f;
-		const int minitile_row_count = 6;
-		const float minitile_space = 14.f;
+		const int minitiles_per_row = 6;
+		const float minitile_space_between = 14.f;
+		const float minitile_box_size = window.getSize().x * 0.25f;
+		float minitile_size = (minitile_box_size - minitile_space_between * (minitiles_per_row + 1)) / minitiles_per_row;
 		// ------------
 
-		sf::Texture texture = get_textures(tilenames);
-		sf::Sprite sprite;
-		sprite.setTexture(texture);
+		sf::Texture tile_texture = get_tile_textures(tilenames);
+		sf::Sprite tile_sprite;
+		tile_sprite.setTexture(tile_texture);
 
-		sf::RenderWindow window(sf::VideoMode::getDesktopMode(), "Platform Shooter Map Builder", sf::Style::Fullscreen);
-
-		sf::Texture buttons = get_button_textures();
-		sf::Sprite button_sprite;
-		int button_size = buttons.getSize().y;
-		sf::IntRect button_rect = get_button_rect(window, button_size * 4);
-		button_sprite.setPosition(window.getSize().x - button_size * 4 - 10.f, 10);
-		button_sprite.setTexture(buttons);
-		button_sprite.setScale({ 4.f, 4.f });
-		bool menu_open = false, button_hover = true;
-		int starting_row = 0;
+		sf::Texture buttons_texture = get_button_textures();
+		sf::Sprite close_button_sprite, menu_button_sprite;
+		int button_size = buttons_texture.getSize().y;
+		sf::IntRect menu_button_rect = get_menu_button_rect(window, button_size * 4);
+		sf::IntRect close_button_rect = get_close_button_rect(window, button_size * 4);
+		bool menu_open = false, solidity_mode = false;
+		bool menu_button_hover = true, close_button_hover = true;
 		bool scroll_down_was_pressed = false;
 		bool scroll_up_was_pressed = false;
+		int starting_row = 0;
+		int selected_tile = 0;
+		sf::Vector2i last_changed_tile;
+
+		close_button_sprite.setPosition((float)close_button_rect.left, (float)close_button_rect.top);
+		close_button_sprite.setTexture(buttons_texture);
+		close_button_sprite.setScale({ 4.f, 4.f });
+
+		menu_button_sprite.setPosition((float)menu_button_rect.left, (float)menu_button_rect.top);
+		menu_button_sprite.setTexture(buttons_texture);
+		menu_button_sprite.setScale({ 4.f, 4.f });
 
 		sf::Event event;
 		std::chrono::system_clock::time_point last_frame_start = std::chrono::system_clock::now();
@@ -78,7 +90,7 @@ int main() {
 						else
 							starting_row++;
 
-						starting_row = std::min(starting_row, (int)tilenames.size() / minitile_row_count - 1);
+						starting_row = std::min(starting_row, (int)tilenames.size() / minitiles_per_row - 1);
 						starting_row = std::max(starting_row, 0);
 					}
 					break;
@@ -87,55 +99,112 @@ int main() {
 
 			// INPUT HANDLING
 
-			if (!(menu_open && sf::Mouse::getPosition().x >= window.getSize().x * 0.7f)) {
-				if (sf::Keyboard::isKeyPressed(sf::Keyboard::Left) || sf::Keyboard::isKeyPressed(sf::Keyboard::A))
-					offset.x += step * elapsed_time;
-				if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right) || sf::Keyboard::isKeyPressed(sf::Keyboard::D))
-					offset.x -= step * elapsed_time;
-				if (sf::Keyboard::isKeyPressed(sf::Keyboard::Up) || sf::Keyboard::isKeyPressed(sf::Keyboard::W))
-					offset.y += step * elapsed_time;
-				if (sf::Keyboard::isKeyPressed(sf::Keyboard::Down) || sf::Keyboard::isKeyPressed(sf::Keyboard::S))
-					offset.y -= step * elapsed_time;
-				if (sf::Mouse::isButtonPressed(sf::Mouse::Left)) {
-					if (LMB_was_pressed) {
-						sf::Vector2i tmp = sf::Mouse::getPosition() - last_mouse_pos;
-						offset.x += tmp.x;
-						offset.y += tmp.y;
-					}
-				}
-			}
-			LMB_was_pressed = sf::Mouse::isButtonPressed(sf::Mouse::Left);
-			last_mouse_pos = sf::Mouse::getPosition();
+			solidity_mode = sf::Keyboard::isKeyPressed(sf::Keyboard::LShift);
 
-			if (menu_open && sf::Mouse::getPosition().x >= window.getSize().x * 0.7f) {
+			if (menu_open && sf::Mouse::getPosition().x >= window.getSize().x * 0.7f) { // Hovers on the menu
 				if (!scroll_up_was_pressed && (sf::Keyboard::isKeyPressed(sf::Keyboard::Up) || sf::Keyboard::isKeyPressed(sf::Keyboard::W)))
 					starting_row--;
 				if (!scroll_down_was_pressed && (sf::Keyboard::isKeyPressed(sf::Keyboard::Down) || sf::Keyboard::isKeyPressed(sf::Keyboard::S)))
 					starting_row++;
-
-				starting_row = std::min(starting_row, (int)tilenames.size() / minitile_row_count - 1);
+				starting_row = std::min(starting_row, (int)tilenames.size() / minitiles_per_row - 1);
 				starting_row = std::max(starting_row, 0);
+
+				sf::IntRect minitile_box(int(0.725f * window.getSize().x + minitile_space_between * 0.5f), int(20.f + button_size * 4.f + minitile_space_between * 0.5f), int(minitile_box_size - minitile_space_between), int(minitile_box_size - minitile_space_between));
+				if (sf::Mouse::isButtonPressed(sf::Mouse::Left) && minitile_box.contains(sf::Mouse::getPosition().x, sf::Mouse::getPosition().y)) {
+					sf::Vector2f look_at(float(sf::Mouse::getPosition().x), float(sf::Mouse::getPosition().y));
+					look_at.x -= minitile_box.left;
+					look_at.y -= minitile_box.top;
+					look_at /= minitile_size + minitile_space_between;
+					selected_tile = (starting_row + int(look_at.y)) * minitiles_per_row + int(look_at.x);
+					selected_tile = std::min(int(tilenames.size()) - 1, selected_tile);
+				}
 			}
+			else {
+				if (sf::Keyboard::isKeyPressed(sf::Keyboard::Left) || sf::Keyboard::isKeyPressed(sf::Keyboard::A))
+					offset.x += step * elapsed_time * scale;
+				if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right) || sf::Keyboard::isKeyPressed(sf::Keyboard::D))
+					offset.x -= step * elapsed_time * scale;
+				if (sf::Keyboard::isKeyPressed(sf::Keyboard::Up) || sf::Keyboard::isKeyPressed(sf::Keyboard::W))
+					offset.y += step * elapsed_time * scale;
+				if (sf::Keyboard::isKeyPressed(sf::Keyboard::Down) || sf::Keyboard::isKeyPressed(sf::Keyboard::S))
+					offset.y -= step * elapsed_time * scale;
+
+				if (sf::Mouse::isButtonPressed(sf::Mouse::Right) && RMB_was_pressed) {
+					sf::Vector2i tmp = sf::Mouse::getPosition() - last_mouse_pos;
+					offset.x += tmp.x;
+					offset.y += tmp.y;
+				}
+
+				sf::IntRect tile_box = sf::IntRect(int(offset.x), int(offset.y), int(map.size.x * tile_size * scale), int(map.size.y * tile_size * scale));
+				if (tile_box.contains(sf::Mouse::getPosition()) && sf::Mouse::isButtonPressed(sf::Mouse::Left)) {
+					sf::Vector2i pos = sf::Mouse::getPosition();
+					float tmp = 1.f / (scale * tile_size);
+					pos.x = int((pos.x - offset.x) * tmp);
+					pos.y = int((pos.y - offset.y) * tmp);
+
+					if (!solidity_mode) {
+						if (sf::Keyboard::isKeyPressed(sf::Keyboard::LControl))
+							map.fill_set_block(pos, selected_tile);
+						else
+							map.set_block(pos, selected_tile);
+					}
+					else {
+						if (last_changed_tile != pos) {
+							if (sf::Keyboard::isKeyPressed(sf::Keyboard::LControl))
+								map.fill_set_solidity(last_changed_tile = pos, !map.get_solidity(pos));
+							else
+								map.inverse_solidity(last_changed_tile = pos);
+						}
+					}
+				}
+			}
+
 			scroll_up_was_pressed = sf::Keyboard::isKeyPressed(sf::Keyboard::Up) || sf::Keyboard::isKeyPressed(sf::Keyboard::W);
 			scroll_down_was_pressed = sf::Keyboard::isKeyPressed(sf::Keyboard::Down) || sf::Keyboard::isKeyPressed(sf::Keyboard::S);
 
-			// DRAW
+			if (sf::Mouse::isButtonPressed(sf::Mouse::Left) && !LMB_was_pressed) {
+				if (menu_open && close_button_rect.contains(sf::Mouse::getPosition()))
+					window.close();
+				if (menu_button_rect.contains(sf::Mouse::getPosition()))
+					menu_open = !menu_open;
+			}
 
+			LMB_was_pressed = sf::Mouse::isButtonPressed(sf::Mouse::Left);
+			RMB_was_pressed = sf::Mouse::isButtonPressed(sf::Mouse::Right);
+			last_mouse_pos = sf::Mouse::getPosition();
+
+			// DRAW
 			window.clear(sf::Color(151, 151, 151));
 
-			sprite.setScale({ scale, scale });
-			int *ptr = map.grid;
+			if (!solidity_mode) {
+				tile_sprite.setScale({ scale, scale });
+				for (int i = 0; i < map.size.y; i++) {
+					for (int j = 0; j < map.size.x; j++) {
+						sf::Vector2f pos = sf::Vector2f(float(j * tile_size), float(i * tile_size));
+						int value = map.get_value(j, i);
 
-			for (int i = 0; i < map.size.y; i++)
-				for (int j = 0; j < map.size.x; j++) {
-					sf::Vector2f pos = sf::Vector2f(float(j * tile_size), float(i * tile_size));
-					int value = *ptr++;
+						tile_sprite.setPosition(pos * scale + offset);
+						tile_sprite.setTextureRect(sf::IntRect(value * tile_size, 0, tile_size, tile_size));
 
-					sprite.setPosition(pos * scale + offset);
-					sprite.setTextureRect(sf::IntRect(value * tile_size, 0, tile_size, tile_size));
-
-					window.draw(sprite);
+						window.draw(tile_sprite);
+					}
 				}
+			}
+			else {
+				sf::RectangleShape shape;
+				shape.setSize({ scale * tile_size, scale * tile_size });
+				for (int i = 0; i < map.size.y; i++) {
+					for (int j = 0; j < map.size.x; j++) {
+						sf::Vector2f pos = sf::Vector2f(float(j * tile_size), float(i * tile_size));
+						int value = !map.get_solidity(j, i);
+
+						shape.setPosition(pos * scale + offset);
+						shape.setFillColor(sf::Color(value * 255, value * 255, value * 255));
+
+						window.draw(shape);
+					}
+				}
+			}
 
 			for (int i = 0; i <= map.size.x; i++)
 				line(window, sf::Vector2f(float(i * tile_size), 0.f) * scale + offset, sf::Vector2f(float(i * tile_size), float(map.size.y * tile_size)) * scale + offset);
@@ -143,6 +212,7 @@ int main() {
 			for (int i = 0; i <= map.size.y; i++)
 				line(window, sf::Vector2f(0.f, float(i * tile_size)) * scale + offset, sf::Vector2f(float(map.size.x * tile_size), float(i * tile_size)) * scale + offset);
 
+			// DRAW the menu
 			if (menu_open) {
 				bool is_mouse_on_menu = sf::Mouse::getPosition().x >= window.getSize().x * 0.7f;
 				sf::RectangleShape box;
@@ -156,48 +226,75 @@ int main() {
 				// Draw the box of minitiles
 				box.setPosition(sf::Vector2f(0.725f * window.getSize().x, 20 + button_size * 4.f));
 				box.setFillColor(sf::Color(100, 100, 100, 180 + 75 * is_mouse_on_menu));
-				float minitile_box_size = window.getSize().x * 0.25f;
 				box.setSize(sf::Vector2f(minitile_box_size, minitile_box_size));
 				window.draw(box);
 
-				// Draw every minitile in the box
+				// Highlight the selected minitile
 				sf::Vector2f minitile_box_position = box.getPosition();
-				float minitile_size = (minitile_box_size - minitile_space * (minitile_row_count + 1)) / minitile_row_count;
+				if (selected_tile >= starting_row * minitiles_per_row && selected_tile < std::min(int(tilenames.size()), ((starting_row + minitiles_per_row) * minitiles_per_row))) {
+					int col = selected_tile % minitiles_per_row;
+					int row = (selected_tile - starting_row * minitiles_per_row) / minitiles_per_row;
+					float x = minitile_space_between * (col) + minitile_size * col + minitile_box_position.x + minitile_space_between * 0.5f;
+					float y = minitile_space_between * (row) + minitile_size * row + minitile_box_position.y + minitile_space_between * 0.5f;
+
+					box.setPosition(x, y);
+					box.setFillColor(sf::Color(255, 0, 0, 180 + 75 * is_mouse_on_menu));
+					box.setSize(sf::Vector2f(minitile_space_between + minitile_size, minitile_space_between + minitile_size));
+
+					window.draw(box);
+				}
+
+				// Draw every minitile in the box
 				box.setSize({ minitile_size, minitile_size });
 				box.setFillColor(sf::Color(255, 0, 0));
-				sprite.setScale({ minitile_size / tile_size, minitile_size / tile_size });
-				for (int j = 0, i = starting_row * minitile_row_count; i < (int)tilenames.size() && j < minitile_row_count * minitile_row_count; i++, j++) {
-					int col = j % minitile_row_count;
-					int row = j / minitile_row_count;
-					float x = minitile_space * (col + 1) + minitile_size * col + minitile_box_position.x;
-					float y = minitile_space * (row + 1) + minitile_size * row + minitile_box_position.y;
+				tile_sprite.setScale({ minitile_size / tile_size, minitile_size / tile_size });
+				for (int j = 0, i = starting_row * minitiles_per_row, last_block = -1; i < (int)tilenames.size() && j < minitiles_per_row * minitiles_per_row; i++, j++) {
+					int col = j % minitiles_per_row;
+					int row = j / minitiles_per_row;
+					float x = minitile_space_between * (col + 1) + minitile_size * col + minitile_box_position.x;
+					float y = minitile_space_between * (row + 1) + minitile_size * row + minitile_box_position.y;
 
-					sprite.setPosition(x, y);
-					sprite.setTextureRect(sf::IntRect(i * tile_size, 0, tile_size, tile_size));
+					tile_sprite.setPosition(x, y);
+					if (i != last_block)
+						tile_sprite.setTextureRect(sf::IntRect((last_block = i) * tile_size, 0, tile_size, tile_size));
 
-					window.draw(sprite);
+					window.draw(tile_sprite);
 				}
+
+				if (!close_button_rect.contains(sf::Mouse::getPosition())) {
+					if (close_button_hover) {
+						close_button_sprite.setTextureRect(sf::IntRect(0, 0, button_size, button_size));
+						close_button_sprite.setColor(sf::Color(255, 255, 255, 127 + 128 * menu_open));
+						close_button_hover = false;
+					}
+				}
+				else {
+					if (!close_button_hover) {
+						close_button_sprite.setTextureRect(sf::IntRect(button_size, 0, button_size, button_size));
+						close_button_sprite.setColor(sf::Color(255, 255, 255, 255));
+						close_button_hover = true;
+					}
+				}
+				
+				window.draw(close_button_sprite);
 			}
-			
-			if (!button_rect.contains(sf::Mouse::getPosition())) {
-				if (button_hover) {
-					button_sprite.setTextureRect(sf::IntRect(0, 0, button_size, button_size));
-					button_sprite.setColor(sf::Color(255, 255, 255, 127 + 128 * menu_open));
-					button_hover = false;
+
+			if (!menu_button_rect.contains(sf::Mouse::getPosition())) {
+				if (menu_button_hover) {
+					menu_button_sprite.setTextureRect(sf::IntRect(button_size * 2, 0, button_size, button_size));
+					menu_button_sprite.setColor(sf::Color(255, 255, 255, 127 + 128 * menu_open));
+					menu_button_hover = false;
 				}
 			}
 			else {
-				if (!button_hover) {
-					button_sprite.setTextureRect(sf::IntRect(button_size, 0, button_size, button_size));
-					button_sprite.setColor(sf::Color(255, 255, 255, 255));
-					button_hover = true;
+				if (!menu_button_hover) {
+					menu_button_sprite.setTextureRect(sf::IntRect(button_size * 3, 0, button_size, button_size));
+					menu_button_sprite.setColor(sf::Color(255, 255, 255, 255));
+					menu_button_hover = true;
 				}
-
-				if (sf::Mouse::isButtonPressed(sf::Mouse::Left) && !LMB_was_pressed)
-					menu_open = !menu_open;
 			}
-			
-			window.draw(button_sprite);
+
+			window.draw(menu_button_sprite);
 
 			window.display();
 		}
